@@ -1,0 +1,2 @@
+add_executable(http_proxy_tests tests.cpp)
+target_link_libraries(http_proxy_tests LINK_PUBLIC http_proxy_lib)
