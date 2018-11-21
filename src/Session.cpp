@@ -60,7 +60,8 @@ void Session::Run()
             // REQUIREMENT: REJECT ALL BESIDES GET
             if (request.GetMethod() != "GET")
             {
-                std::cout << tid << ":"<< "Not GET method, rejecting with error code 400." << endl;
+                std::cout << tid << ":"
+                          << "Not GET method, rejecting with error code 400." << endl;
                 SendError(request, 400, "Proxy Error: Incorrect method.");
                 continue;
             }
@@ -73,9 +74,11 @@ void Session::Run()
             {
                 if (!m_urlCache->CheckCache(proxyTarget, targetPort))
                 {
-                    m_urlCache->Insert(proxyTarget,targetPort);
-                } else {
-                    cout<<"DNS CACHE HIT: "<<proxyTarget<<":"<<targetPort<<endl;
+                    m_urlCache->Insert(proxyTarget, targetPort);
+                }
+                else
+                {
+                    cout << "DNS CACHE HIT: " << proxyTarget << ":" << targetPort << endl;
                 }
                 proxyOut.CreateSocket(m_urlCache->GetAddr(proxyTarget, targetPort));
                 proxyOut.SetRecvTimeout(0);
@@ -88,16 +91,17 @@ void Session::Run()
                 proxyOut.CloseSocket();
                 continue;
             }
-            catch(UrlCache::BlackListException &e){
-                std::cout << tid <<":"<<"Black list hit "<<proxyTarget<<endl;
-                SendError(request,403, "That host has been blacklisted.");
+            catch (UrlCache::BlackListException &e)
+            {
+                std::cout << tid << ":"
+                          << "Black list hit " << proxyTarget << endl;
+                SendError(request, 403, "That host has been blacklisted.");
                 continue;
             }
             catch (std::exception &e)
             {
                 throw e;
             }
-
 
             // REQUIREMENT: Check for cached data.
             if (m_cache->CheckCache(totalUrl))
@@ -123,73 +127,10 @@ void Session::Run()
             proxyOut.BlockingSend(reqData.c_str(), reqData.length());
 
             // Accept the response
-            proxyOut.SetRecvTimeout(0);
-            length = proxyOut.BlockingRecv(data, 20048);
-            uint32_t total = 0;
+            ProcessResponse( m_connection, &proxyOut, m_cache, totalUrl);
 
-            // Process the response.
-            if (length > 0)
-            {
-                std::string respData = std::string(data, length);
-                HTTPResponse response(respData);
-
-                m_cache->Insert(totalUrl, respData);
-
-                // Chunked Response
-                if (response.GetEncodingType() == HTTPResponse::CHUNKED)
-                {
-                    HTTPChunk chunk;
-                    uint32_t skip = response.GetHeaderLength();
-                    do
-                    {
-                        m_connection->BlockingSend(data, length);
-
-                        if (length < skip)
-                        {
-                            skip = skip - length;
-                        }
-                        else
-                        {
-                            skip = chunk.ProcessData(respData, skip);
-                        }
-
-                        if (chunk.GetContainsEnd())
-                        {
-                            break;
-                        }
-
-                        length = proxyOut.BlockingRecv(data, 20048);
-                        respData = std::string(data, length);
-                        m_cache->InsertAppend(totalUrl, respData);
-                    } while (1);
-                }
-                // Normal Response
-                else
-                {
-                    m_connection->BlockingSend(data, length);
-                    total = (length - response.GetHeaderLength());
-
-                    if (total == response.GetContentLength())
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        while (total < response.GetContentLength())
-                        {
-                            length = proxyOut.BlockingRecv(data, 20048);
-                            total += length;
-                            m_connection->BlockingSend(data, length);
-                            string newData(data, length);
-                            m_cache->InsertAppend(totalUrl, newData);
-                        }
-                    }
-                }
-            }
-            else if (proxyOut.DidTimeout())
-            {
-                cout << "Timed out." << endl;
-            }
+            // Initiate pre cache
+            m_cache->RunPrefetch(totalUrl);
         }
         catch (std::exception &e)
         {
@@ -203,6 +144,89 @@ void Session::Run()
               << "Ending session" << endl;
 
     m_connection->CloseSocket();
+}
+
+/**
+ * ProcessResponse
+ * Processes a response, handling the various types of encoding and ensuring we get all t
+ * the data.
+ */
+void Session::ProcessResponse(TCPSocket *forwardSocket, TCPSocket *recvSocket, FileCache *fCache, string totalUrl )
+{
+    uint32_t length;
+    char data[20048];
+
+    // Accept the response
+    recvSocket->SetRecvTimeout(0);
+    length = recvSocket->BlockingRecv(data, 20048);
+    uint32_t total = 0;
+
+    // Process the response.
+    if (length > 0)
+    {
+        std::string respData = std::string(data, length);
+        HTTPResponse response(respData);
+
+        fCache->Insert(totalUrl, respData);
+
+        // Chunked Response
+        if (response.GetEncodingType() == HTTPResponse::CHUNKED)
+        {
+            HTTPChunk chunk;
+            uint32_t skip = response.GetHeaderLength();
+            do
+            {
+                if(forwardSocket)
+                    forwardSocket->BlockingSend(data, length);
+
+                if (length < skip)
+                {
+                    skip = skip - length;
+                }
+                else
+                {
+                    skip = chunk.ProcessData(respData, skip);
+                }
+
+                if (chunk.GetContainsEnd())
+                {
+                    break;
+                }                
+                length = recvSocket->BlockingRecv(data, 20048);
+                respData = std::string(data, length);
+                fCache->InsertAppend(totalUrl, respData);
+            } while (1);
+        }
+        // Normal Response
+        else
+        {
+            if(forwardSocket)
+                forwardSocket->BlockingSend(data, length);
+            total = (length - response.GetHeaderLength());
+
+            if (total == response.GetContentLength())
+            {
+                return;
+            }
+            else
+            {
+                while (total < response.GetContentLength())
+                {
+                    
+                    length = recvSocket->BlockingRecv(data, 20048);
+                    total += length;
+                    if(forwardSocket)
+                        forwardSocket->BlockingSend(data, length);
+                    string newData(data, length);
+                    fCache->InsertAppend(totalUrl, newData);
+                }
+            }
+        }
+    }
+    else if (recvSocket->DidTimeout())
+    {
+        cout << "Timed out." << endl;
+    }
 }
 
 void Session::SendError(HTTPRequest &request, int code, std::string error)

@@ -169,7 +169,7 @@ bool TCPSocket::CreateSocket(string port)
     {
 
         char nameBuffer[INET_ADDRSTRLEN];
-        inet_ntop(aiIter->ai_family, aiIter->ai_addr, nameBuffer, INET_ADDRSTRLEN);
+        inet_ntop(aiIter->ai_family, &((sockaddr_in*)aiIter->ai_addr)->sin_addr, nameBuffer, INET_ADDRSTRLEN);
         cout << "Attempting to create socket for: " << (nameBuffer != NULL ? nameBuffer : "") << endl;
 
         // Create the socket.
@@ -332,7 +332,7 @@ TCPSocket *TCPSocket::Accept()
         return NULL;
     }
     char nameBuffer[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &peerAddr, nameBuffer, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, &(peerAddr.sin_addr), nameBuffer, INET_ADDRSTRLEN);
 
     //std::cout << "Connection from "<<nameBuffer<<std::endl;
 

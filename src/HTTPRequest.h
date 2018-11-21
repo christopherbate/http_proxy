@@ -35,6 +35,10 @@ class HTTPRequest
     }
     std::string GetUrl();
 
+    void SetHeader(std::string key,std::string value){
+      m_headerMap[key] = value;
+    }
+
     void ParseUrl(std::string);
 
     bool CheckAbsolute(std::string);

@@ -774,7 +774,12 @@ int main(int argc, char **argv)
         "Must be able to insert and retrieve items.",
         []() {
             UrlCache uc("./blacklist.txt");
-            uc.Insert("www.google.com", "80");
+            try{
+                uc.Insert("www.google.com", "80");
+            }catch(UrlCache::BlackListException &e){
+                cout<<"Should not be blacklisted."<<endl;
+                return 0;
+            }
 
             if (uc.CheckCache("www.google.com", "80") != true)
             {
@@ -794,6 +799,9 @@ int main(int argc, char **argv)
             catch (ICache::CacheMissException &e)
             {
                 return 1;
+            }
+            catch(UrlCache::BlackListException &e){
+                return 0;
             }
 
             return 0;
@@ -829,7 +837,7 @@ int main(int argc, char **argv)
 
             try
             {
-                uc.Insert("yahoo.com", "80");
+                uc.Insert("www.yahoo.com", "80");
             }
             catch (UrlCache::BlackListException &e)
             {

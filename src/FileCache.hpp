@@ -22,7 +22,9 @@ class FileCache : public ICache
     void Insert(std::string url, std::string &data);
     void InsertAppend(std::string url, std::string &data);
 
-    
+    void RunPrefetch(std::string &url);    
+
+    void PrefetchThread( std::string filename );
 
     std::string GetRoot(){
         return m_cacheRoot;

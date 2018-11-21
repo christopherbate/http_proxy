@@ -41,19 +41,16 @@ UrlCache::UrlCache(std::string blackListFilename) : m_blacklistFilename(blackLis
             char nameBuffer[INET_ADDRSTRLEN];
             char hostnameBuffer[1024];
             char service[20];
-            if (inet_ntop(AF_INET, &aiIter->ai_addr, nameBuffer, INET_ADDRSTRLEN) != NULL)
+
+            if (inet_ntop(AF_INET, &(((struct sockaddr_in*)aiIter->ai_addr)->sin_addr), nameBuffer, INET_ADDRSTRLEN) != NULL)
             {
                 cout << "Blacklisting " << hostname << ":" << nameBuffer << endl;
                 m_blackMap[nameBuffer] = 1;
             }
-            if (getnameinfo(aiIter->ai_addr, sizeof(sockaddr_in), hostnameBuffer, 1024, service, 20, NI_NOFQDN) == 0)
+            if (aiIter->ai_canonname)
             {
-                cout << "Blacklisting: " << string(hostnameBuffer) << ", " << service << endl;
-                m_blackMap[string(hostnameBuffer)] = 1;
-            }
-            if(aiIter->ai_canonname){                
                 m_blackMap[aiIter->ai_canonname] = 1;
-            }            
+            }
             aiIter = aiIter->ai_next;
         }
         freeaddrinfo(resList);
@@ -69,22 +66,23 @@ void UrlCache::Insert(std::string hostname, std::string port)
         throw UrlCache::BlackListException();
     }
 
-    std::cout << "Inserting: " << hostname <<":"<<port<< std::endl;
+    std::cout << "Inserting: " << hostname << ":" << port << std::endl;
+
     struct addrinfo *resList;
     struct addrinfo hints;
+
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = AI_CANONNAME | AI_NUMERICSERV;
-    ;
 
     int rc = getaddrinfo(hostname.c_str(), port.c_str(), &hints, &resList);
     if (rc != 0)
     {
         cerr << "UrlCache : getaddrinfo : " << rc << endl;
         throw UrlCache::NoAddressException();
-    }    
+    }
 
     // Check first for empty address.
     if (resList == NULL)
@@ -97,9 +95,11 @@ void UrlCache::Insert(std::string hostname, std::string port)
     struct addrinfo *aiIter = resList;
     while (aiIter != NULL)
     {
-        if(aiIter->ai_canonname){
-            std::cout<<"Canon name: "<<aiIter->ai_canonname<<std::endl;
-            if( CheckBL(aiIter->ai_canonname) ){                
+        if (aiIter->ai_canonname)
+        {
+            std::cout << "Canon name: " << aiIter->ai_canonname << std::endl;
+            if (CheckBL(aiIter->ai_canonname))
+            {
                 freeaddrinfo(resList);
                 throw UrlCache::BlackListException();
             }
@@ -110,8 +110,8 @@ void UrlCache::Insert(std::string hostname, std::string port)
         {
             aiIter = aiIter->ai_next;
             continue;
-        }
-        std::cout<<"Attempting to connect: "<<*std::hex<<aiIter->ai_addr<<endl;
+        }        
+
         if (connect(fd, aiIter->ai_addr, aiIter->ai_addrlen) != 0)
         {
             cerr << "TCPSocket : CreateSocket : connect : " << strerror(errno) << endl;
@@ -119,17 +119,20 @@ void UrlCache::Insert(std::string hostname, std::string port)
             close(fd);
             continue;
         }
+
         close(fd);
         char nameBuffer[INET_ADDRSTRLEN];
-        if (inet_ntop(AF_INET, &aiIter->ai_addr, nameBuffer, INET_ADDRSTRLEN) == NULL)
+        if (inet_ntop(AF_INET, &(((struct sockaddr_in*)aiIter->ai_addr)->sin_addr), nameBuffer, INET_ADDRSTRLEN) == NULL)
         {
             freeaddrinfo(resList);
             throw runtime_error("Failed to convert address to text.");
         }
         else
-        {            
-            if(CheckBL(nameBuffer)){
+        {
+            if(CheckBL(nameBuffer))
+            {
                 freeaddrinfo(resList);
+                cout<<"Blacklisted: "<<nameBuffer<<endl;
                 throw UrlCache::BlackListException();
             }
             cout << "Saving " << hostname << ":" << nameBuffer << endl;

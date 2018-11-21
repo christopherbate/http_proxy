@@ -277,7 +277,7 @@ void HTTPRequest::CreateProxyRequest()
         if(!skip){
             m_proxyRequest+=element.first+":"+element.second+"\r\n";
         }
-    }
+    }    
     //m_proxyRequest+="Connection:close\r\n";
 
     m_proxyRequest += "\r\n";

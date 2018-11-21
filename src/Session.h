@@ -27,6 +27,9 @@ public:
   void SendError(HTTPRequest &request, int code = 500, std::string error = "Proxy Error");
   void SendError();  
 
+  static void ProcessResponse(TCPSocket *forwardSocket,
+           TCPSocket *recvSocket, FileCache *fCache, string totalUrl  );
+
 private:
   TCPSocket *m_connection;
   TCPSocket m_outgoing;
