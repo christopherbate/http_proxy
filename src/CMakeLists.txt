@@ -1,2 +1,2 @@
-add_executable(http_proxy main.cpp Blacklist.cpp FileCache.cpp FileManager.cpp HTTPRequest.cpp HTTPResponse.cpp TCPSocket.cpp Session.cpp UrlCache.cpp)
-add_library(http_proxy_lib Blacklist.cpp FileCache.cpp FileManager.cpp HTTPRequest.cpp HTTPResponse.cpp TCPSocket.cpp Session.cpp UrlCache.cpp) 
+add_executable(http_proxy main.cpp FileCache.cpp FileManager.cpp HTTPRequest.cpp HTTPResponse.cpp TCPSocket.cpp Session.cpp UrlCache.cpp)
+add_library(http_proxy_lib FileCache.cpp FileManager.cpp HTTPRequest.cpp HTTPResponse.cpp TCPSocket.cpp Session.cpp UrlCache.cpp) 

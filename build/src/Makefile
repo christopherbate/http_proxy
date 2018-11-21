@@ -141,24 +141,6 @@ http_proxy_lib/fast:
 .PHONY : http_proxy_lib/fast
 
 # target to build an object file
-Blacklist.o:
-	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy.dir/build.make src/CMakeFiles/http_proxy.dir/Blacklist.o
-	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy_lib.dir/build.make src/CMakeFiles/http_proxy_lib.dir/Blacklist.o
-.PHONY : Blacklist.o
-
-# target to preprocess a source file
-Blacklist.i:
-	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy.dir/build.make src/CMakeFiles/http_proxy.dir/Blacklist.i
-	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy_lib.dir/build.make src/CMakeFiles/http_proxy_lib.dir/Blacklist.i
-.PHONY : Blacklist.i
-
-# target to generate assembly for a file
-Blacklist.s:
-	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy.dir/build.make src/CMakeFiles/http_proxy.dir/Blacklist.s
-	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy_lib.dir/build.make src/CMakeFiles/http_proxy_lib.dir/Blacklist.s
-.PHONY : Blacklist.s
-
-# target to build an object file
 FileCache.o:
 	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy.dir/build.make src/CMakeFiles/http_proxy.dir/FileCache.o
 	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy_lib.dir/build.make src/CMakeFiles/http_proxy_lib.dir/FileCache.o
@@ -309,9 +291,6 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... http_proxy"
 	@echo "... http_proxy_lib"
-	@echo "... Blacklist.o"
-	@echo "... Blacklist.i"
-	@echo "... Blacklist.s"
 	@echo "... FileCache.o"
 	@echo "... FileCache.i"
 	@echo "... FileCache.s"
