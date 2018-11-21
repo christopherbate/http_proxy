@@ -9,13 +9,13 @@ This project uses CMake. To build, do the following:
 3. make
 
 ## Features
-1. This HTTP proxy caches pages as they are requested by users. Settings for the cache (timeout, etc) are specified in the cache_settings.txt
+1. This HTTP proxy caches pages and DNS lookups as they are requested by users.
 2. A blacklist blacklists requests as they arrive.
 3. Multithreaded
 
 ## Usage
 Start:
-`http_proxy [port] [cache timeout (optional)]`
+`http_proxy [port] [page cache timeout (optional)]`
 
 
 

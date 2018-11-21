@@ -267,6 +267,24 @@ TCPSocket.s:
 .PHONY : TCPSocket.s
 
 # target to build an object file
+UrlCache.o:
+	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy.dir/build.make src/CMakeFiles/http_proxy.dir/UrlCache.o
+	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy_lib.dir/build.make src/CMakeFiles/http_proxy_lib.dir/UrlCache.o
+.PHONY : UrlCache.o
+
+# target to preprocess a source file
+UrlCache.i:
+	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy.dir/build.make src/CMakeFiles/http_proxy.dir/UrlCache.i
+	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy_lib.dir/build.make src/CMakeFiles/http_proxy_lib.dir/UrlCache.i
+.PHONY : UrlCache.i
+
+# target to generate assembly for a file
+UrlCache.s:
+	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy.dir/build.make src/CMakeFiles/http_proxy.dir/UrlCache.s
+	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy_lib.dir/build.make src/CMakeFiles/http_proxy_lib.dir/UrlCache.s
+.PHONY : UrlCache.s
+
+# target to build an object file
 main.o:
 	cd /media/chris/linux_data/workspace/networking/http_proxy/build && $(MAKE) -f src/CMakeFiles/http_proxy.dir/build.make src/CMakeFiles/http_proxy.dir/main.o
 .PHONY : main.o
@@ -312,6 +330,9 @@ help:
 	@echo "... TCPSocket.o"
 	@echo "... TCPSocket.i"
 	@echo "... TCPSocket.s"
+	@echo "... UrlCache.o"
+	@echo "... UrlCache.i"
+	@echo "... UrlCache.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

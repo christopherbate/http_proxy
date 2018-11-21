@@ -11,25 +11,28 @@
 #include "HTTPResponse.h"
 #include "HTTPRequest.h"
 #include "FileManager.h"
+#include "FileCache.hpp"
+#include "UrlCache.hpp"
+
 
 class Session
 {
 public:
-  Session(TCPSocket *connection, const char *root);
+  Session(TCPSocket *connection, FileCache *cache,UrlCache *urlCache);
 
   ~Session();
 
   void Run();
 
-  void HandleGET(HTTPRequest &request, HTTPResponse &response);
-  void HandlePOST(HTTPRequest &request, HTTPResponse &response);
-
-  void SendError(HTTPRequest &request);
-  void SendError();
+  void SendError(HTTPRequest &request, int code = 500, std::string error = "Proxy Error");
+  void SendError();  
 
 private:
   TCPSocket *m_connection;
+  TCPSocket m_outgoing;
   FileManager m_fileManager;
+  FileCache *m_cache;
+  UrlCache *m_urlCache;
 };
 
 #endif

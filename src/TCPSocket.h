@@ -7,6 +7,8 @@ September 2018
 #define SOCKET_DEVICE_H
 
 #include "ISocket.h"
+#include "UrlCache.hpp"
+#include <exception>
 
 using namespace std;
 
@@ -20,10 +22,13 @@ class TCPSocket : public ISocket
 {
 public:
   TCPSocket(); 
+  TCPSocket(UrlCache *urlCache); 
   ~TCPSocket();  
   
   /** Creates a connecting socket */
   bool CreateSocket(string host, string port);
+
+  bool CreateSocket( sockaddr_in *addr );
 
   /** Creates a listening socket */
   bool CreateSocket(string port);
@@ -52,6 +57,14 @@ public:
   string GetPeer(){
     return m_remoteHost;
   }
+
+  struct BadHostnameException : public exception {
+    const char * what() const throw() {
+      return "Bad Hostname";
+    }
+  };
+
+  UrlCache *m_urlCache;
 };
 
 #endif

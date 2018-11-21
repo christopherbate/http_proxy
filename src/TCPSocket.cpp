@@ -5,6 +5,12 @@ Constructor
 */
 TCPSocket::TCPSocket() : ISocket()
 {
+    m_urlCache = NULL;
+}
+
+TCPSocket::TCPSocket(UrlCache *urlCache) : ISocket()
+{
+    m_urlCache = urlCache;
 }
 
 /*
@@ -34,6 +40,7 @@ bool TCPSocket::CreateSocket(string host, string port)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = AI_NUMERICSERV | AI_CANONNAME;
+    m_remoteHost = host;
 
     // Get the address info structure
     struct addrinfo *resList;
@@ -41,6 +48,9 @@ bool TCPSocket::CreateSocket(string host, string port)
     if (rc != 0)
     {
         cerr << "TCPSocket : CreateSocket : getaddrinfo : " << rc << endl;
+
+        throw TCPSocket::BadHostnameException();
+
         return false;
     }
 
@@ -48,6 +58,7 @@ bool TCPSocket::CreateSocket(string host, string port)
     if (resList == NULL)
     {
         cerr << "TCPSocket : CreateSocket : no addresses at hostname/port" << endl;
+        throw TCPSocket::BadHostnameException();
         return false;
     }
 
@@ -57,7 +68,7 @@ bool TCPSocket::CreateSocket(string host, string port)
     {
         char nameBuffer[INET_ADDRSTRLEN];
         inet_ntop(aiIter->ai_family, aiIter->ai_addr, nameBuffer, INET_ADDRSTRLEN);
-        cout << "Attempting to create TCP socket with cached target: " << (nameBuffer != NULL ? nameBuffer : "") << " " << resList->ai_canonname << endl;
+        //cout << "Attempting to create TCP socket with cached target: " << (nameBuffer != NULL ? nameBuffer : "") << " " << resList->ai_canonname << endl;
         m_fd = socket(aiIter->ai_family, aiIter->ai_socktype, aiIter->ai_protocol);
 
         if (m_fd == -1)
@@ -86,6 +97,38 @@ bool TCPSocket::CreateSocket(string host, string port)
         cerr << "TCPSocket : failed to connect to any addresses." << endl;
         close(m_fd);
         m_fd = -1;
+        return false;
+    }
+
+    return true;
+}
+
+/*
+CreateSocket (connecting, with address info)
+Creates a connecting (client) socket and attempts to connect to specified host and port
+returns true if connection was successful, false otherwise.
+
+Bypasses DNS lookup
+*/
+bool TCPSocket::CreateSocket(sockaddr_in *addr)
+{
+    if (IsOpen())
+    {
+        cerr << "Socket already open at fd: " << m_fd << ". Close before reusing this interface." << endl;
+        return false;
+    }
+    m_type = CONN;
+
+    m_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if(m_fd ==-1){
+        throw std::runtime_error("Could not create socket.");
+    }
+
+    if (connect(m_fd,(sockaddr*) addr, sizeof(sockaddr_in)) == -1)
+    {
+        cerr << "TCPSocket : CreateSocket : connect : " << strerror(errno) << endl;        
+        close(m_fd);
+        throw std::runtime_error("Could not connect using address bypass DNS.");
         return false;
     }
 
@@ -141,9 +184,10 @@ bool TCPSocket::CreateSocket(string port)
         // Enable  reuse
         int reuse = 1;
         int res = 0;
-        res = setsockopt(m_fd, SOL_SOCKET, SO_REUSEPORT,&reuse,sizeof(int) );
-        if( res < 0){
-            cerr << "Failed to set socket reuse."<<endl;
+        res = setsockopt(m_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(int));
+        if (res < 0)
+        {
+            cerr << "Failed to set socket reuse." << endl;
             return false;
         }
 
@@ -191,13 +235,15 @@ uint32_t TCPSocket::BlockingSend(const char *data, uint32_t length)
 
     // If we are passive, we need to specify address. Otherwise, we saved it using "connect"
     // although both are using datagram udp.
-    while(total != length){
-        res = send(m_fd, data, sl, MSG_NOSIGNAL);    
-        if(res == -1)    {
+    while (total != length)
+    {
+        res = send(m_fd, data, sl, MSG_NOSIGNAL);
+        if (res == -1)
+        {
             break;
         }
-        total+=res;
-    }    
+        total += res;
+    }
 
     if (res == -1)
     {
@@ -237,9 +283,11 @@ uint32_t TCPSocket::BlockingRecv(char *buffer, uint32_t size)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
         {
-            //////cerr << "Timeout" << endl;
+            //cerr << "Timeout" << endl;
             m_timeout = true;
-        } else {
+        }
+        else
+        {
             m_bad = true;
         }
         return 0;
@@ -286,7 +334,7 @@ TCPSocket *TCPSocket::Accept()
     char nameBuffer[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &peerAddr, nameBuffer, INET_ADDRSTRLEN);
 
-    std::cout << "Connection from "<<nameBuffer<<std::endl;
+    //std::cout << "Connection from "<<nameBuffer<<std::endl;
 
     TCPSocket *sock = new TCPSocket();
     sock->SetSocketFD(res);

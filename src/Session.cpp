@@ -3,10 +3,14 @@
 #include "HTTPRequest.h"
 #include "HTTPResponse.h"
 #include <cassert>
+//#include <rand>
+#include <cstdlib>
+#include <thread>
 
 using namespace std;
 
-Session::Session(TCPSocket *connection, const char *root) : m_connection(connection), m_fileManager(root)
+Session::Session(TCPSocket *connection, FileCache *cache, UrlCache *urlCache)
+    : m_connection(connection), m_cache(cache), m_fileManager(cache->GetRoot().c_str()), m_urlCache(urlCache)
 {
 }
 
@@ -23,224 +27,200 @@ void Session::Run()
     {
         throw std::runtime_error("Connection socket is not set.");
     }
-    const unsigned timeout = 10000000;
-    m_connection->SetRecvTimeout(timeout);
-    auto startTimer = chrono::system_clock::now();
+
     // Receive data
-    char data[2048];
+    char data[20048];
     uint32_t length = 0;
+    auto tid = rand();
 
-    cout << "Running session." << endl;
-
+    m_connection->SetRecvTimeout(0);
+    std::cout << tid << ":"
+              << "Running session." << endl;
     while (1)
     {
-        //assert(m_connection);
-        //assert(!m_connection->IsBad());
-
-        do
+        // Attempt to read in request from user.
+        length = m_connection->BlockingRecv(data, 20048);
+        if (length == 0)
         {
-            length = m_connection->BlockingRecv(data, 2048);
+            std::cout << tid << ":"
+                      << "Peer closed connection." << endl;
+            m_connection->CloseSocket();
+            break;
+        }
 
-            if (m_connection->DidTimeout())
-            {
-                auto timeCheck = chrono::system_clock::now();
-                if (chrono::duration_cast<chrono::microseconds>(timeCheck - startTimer).count() > timeout)
-                {
-                    cout << "Keep alive expired" << endl;
-                    cout << "Ending session" << endl;
-                    m_connection->CloseSocket();
-                    return;
-                }
-            }
-            else if (length == 0)
-            {
-                cout << "Peer closed connection." << endl;
-                m_connection->CloseSocket();
-                return;
-            }
-
-        } while (length == 0);
-
-        // Display tthe header information (for fun)
+        // Process proxy request.
         try
         {
-            cout << "Received request of length: " << std::dec << length << endl;
-            string dataString = string(data, length);
-            HTTPRequest request(dataString);
-            cout << request.GetUrl() << endl;
-
+            string requestString = string(data, length);
+            HTTPRequest request(requestString);
+            string totalUrl = request.GetProxyTargetHost() + request.GetUrl();
             // Print header information.
-            cout << "Header:" << endl;
-            cout << request.GetMethod() << endl;
-            cout << request.GetUrl() << endl;
-            cout << request.GetProtocol() << endl;
-            cout << request.GetHost() << endl;
-            cout << "Keepalive:" << request.GetKeepAlive() << endl;
-            if (request.GetMethod() == "POST")
+            std::cout << tid << ":Received: " << request.GetMethod() << " " << totalUrl << endl;
+
+            // REQUIREMENT: REJECT ALL BESIDES GET
+            if (request.GetMethod() != "GET")
             {
-                cout << "Post CL: " << request.GetContentLength() << endl;
-                cout << request.GetPostData() << endl;
+                std::cout << tid << ":"<< "Not GET method, rejecting with error code 400." << endl;
+                SendError(request, 400, "Proxy Error: Incorrect method.");
+                continue;
             }
 
-            // Create response.
-            HTTPResponse response(request);
+            // REQUIREMENT: Use DNS cache and return error if name invalid
+            TCPSocket proxyOut;
+            std::string proxyTarget = request.GetProxyTargetHost();
+            std::string targetPort = request.GetPort();
+            try
+            {
+                if (!m_urlCache->CheckCache(proxyTarget, targetPort))
+                {
+                    m_urlCache->Insert(proxyTarget,targetPort);
+                } else {
+                    cout<<"DNS CACHE HIT: "<<proxyTarget<<":"<<targetPort<<endl;
+                }
+                proxyOut.CreateSocket(m_urlCache->GetAddr(proxyTarget, targetPort));
+                proxyOut.SetRecvTimeout(0);
+            }
+            catch (UrlCache::NoAddressException &e)
+            {
+                std::cout << tid << ":"
+                          << "Invalid hostname request, sending code 400." << endl;
+                SendError(request, 400, "Proxy Error: That URL could not be located.");
+                proxyOut.CloseSocket();
+                continue;
+            }
+            catch(UrlCache::BlackListException &e){
+                std::cout << tid <<":"<<"Black list hit "<<proxyTarget<<endl;
+                SendError(request,403, "That host has been blacklisted.");
+                continue;
+            }
+            catch (std::exception &e)
+            {
+                throw e;
+            }
 
-            // If the url is present, retrieve the corresponding file.
-            if (request.GetMethod() == "GET")
+
+            // REQUIREMENT: Check for cached data.
+            if (m_cache->CheckCache(totalUrl))
             {
-                HandleGET(request, response);
-            }
-            else if (request.GetMethod() == "POST")
-            {
-                HandlePOST(request, response);
-            }
-            else
-            {
-                SendError(request);
+                cout << "CACHE HIT" << endl;
+
+                std::string filename = m_cache->GetCachedFile(totalUrl);
+
+                ifstream infile(filename.c_str(), ifstream::binary | ifstream::in);
+
+                do
+                {
+                    infile.read(data, 20048);
+                    m_connection->BlockingSend(data, infile.gcount());
+                } while (infile.gcount() == 20048);
+
+                proxyOut.CloseSocket();
+                continue;
             }
 
-            if (request.GetKeepAlive())
+            // No data cached - forward request
+            std::string &reqData = request.GetProxyRequest();
+            proxyOut.BlockingSend(reqData.c_str(), reqData.length());
+
+            // Accept the response
+            proxyOut.SetRecvTimeout(0);
+            length = proxyOut.BlockingRecv(data, 20048);
+            uint32_t total = 0;
+
+            // Process the response.
+            if (length > 0)
             {
-                cout << "Starting keep alive timer" << endl;
-                startTimer = chrono::system_clock::now();
+                std::string respData = std::string(data, length);
+                HTTPResponse response(respData);
+
+                m_cache->Insert(totalUrl, respData);
+
+                // Chunked Response
+                if (response.GetEncodingType() == HTTPResponse::CHUNKED)
+                {
+                    HTTPChunk chunk;
+                    uint32_t skip = response.GetHeaderLength();
+                    do
+                    {
+                        m_connection->BlockingSend(data, length);
+
+                        if (length < skip)
+                        {
+                            skip = skip - length;
+                        }
+                        else
+                        {
+                            skip = chunk.ProcessData(respData, skip);
+                        }
+
+                        if (chunk.GetContainsEnd())
+                        {
+                            break;
+                        }
+
+                        length = proxyOut.BlockingRecv(data, 20048);
+                        respData = std::string(data, length);
+                        m_cache->InsertAppend(totalUrl, respData);
+                    } while (1);
+                }
+                // Normal Response
+                else
+                {
+                    m_connection->BlockingSend(data, length);
+                    total = (length - response.GetHeaderLength());
+
+                    if (total == response.GetContentLength())
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        while (total < response.GetContentLength())
+                        {
+                            length = proxyOut.BlockingRecv(data, 20048);
+                            total += length;
+                            m_connection->BlockingSend(data, length);
+                            string newData(data, length);
+                            m_cache->InsertAppend(totalUrl, newData);
+                        }
+                    }
+                }
             }
-            else
+            else if (proxyOut.DidTimeout())
             {
-                break;
+                cout << "Timed out." << endl;
             }
         }
         catch (std::exception &e)
         {
-            cout << e.what() << endl;
+            std::cout << tid << ": Exception :" << e.what() << endl;
             SendError();
             continue;
         }
     }
 
-    cout << "Ending session" << endl;
+    std::cout << tid << ":"
+              << "Ending session" << endl;
 
     m_connection->CloseSocket();
 }
 
-void Session::HandleGET(HTTPRequest &request, HTTPResponse &response)
-{
-    std::string url = request.GetUrl();
-    std::string filename;
-    uint64_t size = 0;
-    if (url != "")
-    {
-        try
-        {
-            filename = m_fileManager.GetFilename(url, size);
-
-            response.SetHeaderField("Content-Length", to_string(size));
-            response.SetHeaderField("Content-Type", m_fileManager.GetContentType(filename));
-        }
-        catch (std::runtime_error &e)
-        {
-            cerr << "Exception in URL processing. " << e.what() << endl;
-            SendError(request);
-            return;
-        }
-    }
-
-    // Display response.
-    std::string respHeader = response.GetHeader();
-
-    m_connection->BlockingSend(respHeader.c_str(), respHeader.length());
-
-    // Send the file.
-    char buffer[1024];
-    if (size > 0)
-    {
-        ifstream infile(filename);
-        while (!infile.eof())
-        {
-            infile.read(buffer, 1024);
-            m_connection->BlockingSend(buffer, infile.gcount());
-        }
-        infile.close();
-    }
-}
-
-void Session::HandlePOST(HTTPRequest &request, HTTPResponse &response)
-{
-    std::cout << "Returning post response " << endl;
-    std::string url = request.GetUrl();
-    std::string filename;
-    std::string postData = "<h1>POST DATA</h1><pre>";
-    uint64_t size = 0;
-    uint64_t postDataLength = 0;
-    if (url != "")
-    {
-        try
-        {
-            if (request.GetContentLength() > 0)
-            {
-                postData += request.GetPostData();
-            }
-            postData += "</pre>";
-            postDataLength = postData.length();
-            filename = m_fileManager.GetFilename(url, size);
-            response.SetHeaderField("Content-Length", to_string(size + postDataLength));
-            response.SetHeaderField("Content-Type", m_fileManager.GetContentType(filename));
-        }
-        catch (std::runtime_error &e)
-        {
-            cerr << "Exception in URL processing. " << e.what() << endl;
-            SendError(request);
-            return;
-        }
-    }
-
-    // Display response.
-    std::string respHeader = response.GetHeader();
-
-    uint32_t result = m_connection->BlockingSend(respHeader.c_str(), respHeader.length());
-
-    if (result <= 0)
-    {
-        return;
-    }
-
-    // Send the file.
-    char buffer[1024000];
-    if (size > 0)
-    {
-        ifstream infile(filename);
-        while (!infile.eof())
-        {
-            infile.read(buffer, 1024000);
-            // Look for the body tag.
-            string data(buffer, infile.gcount());
-            size_t pos = data.find("<body>");
-            if (pos != std::string::npos)
-            {
-                data.insert(pos + 6, postData);
-            }
-
-            result = m_connection->BlockingSend(data.c_str(), data.length());
-
-            if (result <= 0)
-            {
-                break;
-            }
-        }
-        infile.close();
-    }
-}
-
-void Session::SendError(HTTPRequest &request)
+void Session::SendError(HTTPRequest &request, int code, std::string error)
 {
     HTTPResponse response(request);
-    response.Status(500);
+    response.Status(code);
     response.SetKeepAlive(false);
-    response.SetHeaderField("Content-Length", "0");
+    response.SetHeaderField("Content-Length", std::to_string(error.size()));
     response.SetHeaderField("Content-Type", "text/plain");
     // Display response.
     std::string respHeader = response.GetHeader();
 
     uint32_t result = m_connection->BlockingSend(respHeader.c_str(), respHeader.length());
+    if (result <= 0)
+    {
+        return;
+    }
+    result = m_connection->BlockingSend(error.c_str(), error.length());
     if (result <= 0)
     {
         return;
